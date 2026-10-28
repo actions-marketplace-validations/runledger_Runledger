@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.3.0] - 2026-10-28
+
+### Added
+
+- `runledger scenario` runs five synthetic support-agent scenarios, compares unsafe and fixed refund policies, and reports committed effects independently of tool responses. Built-in demonstrations need no model keys; explicit JSONL adapters test application agents.
+- `runledger incident import` accepts the versioned production export format or a selected case from RunLedger JSONL. Local redaction replaces recognized secrets, personal details, identifiers, and freeform text with consistent per-import aliases; custom JSON Pointer paths cover application-specific fields.
+- `runledger incident inspect`, `replay`, and `promote` evaluate explicit business rules, replay ordered recorded tool responses, and retain validated sanitized regression fixtures. Unrecorded paths stop as divergences; no live fallback tool is executed.
+- Incident artifacts include redaction audit counts, escaped HTML reports, JSON evaluations, JSONL traces, and JUnit evidence. `--gate` separates a successful reproduction from a passing business-rule check.
+- Public fictional refund exports, executable adapters, format guides, and clean-install checks for the new commands.
+
+### Compatibility
+
+- Preserves all 0.2.5 doctor, verification, replay-order, normalization, execution-limit, report-safety, and command-resolution fixes.
+- Supports Python 3.9 and later. Existing record/replay suites and cassette formats remain available.
+- Production imports require supported complete serial traces and explicit assertions. Effect-count checks need a declared complete audit ledger. Redaction requires review; model/network calls outside the JSONL tool boundary are not intercepted.
+
+
+## [0.2.5] - 2026-10-28
+
+### Added
+
+- `runledger doctor` inspects suite files, paths, assertions, budgets, cassettes, and baselines without executing agent or tool code. An explicit `--probe` runs one bounded replay case to check runtime and protocol readiness.
+- `runledger verify` repeats the original suite, checks declared regressions against structured assertion or budget failures, and verifies recovery to the original behavior. It retains per-run artifacts plus aggregate JSON and JUnit evidence; raw `probe.junit.xml` files preserve intentional failures.
+- A self-contained Python verification example, a generic verification plan for the existing mcp-agent example, and a guide covering setup, plan authoring, replay boundaries, and CI collection.
+
+### Fixed
+
+- Bare Python launcher aliases resolve against the child process's PATH before launch, preventing Windows from selecting a different parent-application interpreter. Alias resolution preserves virtual-environment symlinks and does not rewrite explicit executable paths.
+- Command configuration preserves explicit virtual-environment executable symlinks, Python module names after `-m`, and Node inline code after `-p`.
+- JUnit reports replace XML-invalid control characters in agent errors with readable replacement characters, so both expected-failure evidence and ordinary test reports remain parseable.
+
+## [0.2.4] - 2026-10-27
+
+### Fixed
+
+- HTML reports render agent and tool output as text, preventing script injection through traces, case IDs, and failure messages.
+- Wall-time budgets interrupt agent waits, blocked writes, tool imports, and live tool calls. Tool-call limits stop excess calls before execution, and tool-error limits stop further execution immediately.
+- Repeated identical tool requests consume their matching cassette entries in recorded order. An extra request now fails with a cassette mismatch rather than reusing an earlier response.
+- JUnit includes failed baseline regression gates and redacts failure messages.
+- Inline agent code and its arguments retain literal backslashes. Unknown regression threshold names are rejected instead of silently disabling a gate.
+- Windows protocol pipes use UTF-8, Python launcher aliases work in both directions, and child processes are cleaned up even when their parent has already exited.
+
+### Changed
+
+- Record/live tool modules now run in a cancellable worker per case. State persists between calls within a case and resets between cases. Existing cassette files remain readable, but suites that depended on reusing one recorded response must record one entry per call.
+- Documentation distinguishes recorded protocol calls from independent model/network calls made by the agent.
+
+### Added
+
+- A runnable, pinned `mcp-agent` integration with a fixed model fixture, ten unchanged replay checks, and three deliberate regression scenarios.
+- Ubuntu/Windows CI, Python 3.9 compatibility coverage, DOM security tests, and clean-install verification of published releases.
+- A developer trial guide and structured acceptance output for testing before outreach.
+
 ## [0.2.3] - 2026-10-27
 
 ### Fixed

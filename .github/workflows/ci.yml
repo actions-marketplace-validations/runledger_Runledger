@@ -9,23 +9,69 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.11"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install report test dependencies
+        run: npm ci
+      - name: Run tests
+        run: pytest --timeout=60
+      - name: Run demo suite (replay)
+        run: runledger run examples/evals/demo --mode replay --baseline baselines/demo.json
+      - name: Diagnose and verify the Python integration
+        run: |
+          runledger doctor examples/verification --probe
+          runledger verify examples/verification
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runledger-artifacts-${{ runner.os }}-${{ matrix.python }}
+          path: runledger_out/**
+
+  mcp-agent-example:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/mcp-agent/package-lock.json
+      - name: Install RunLedger and the pinned example
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
-      - name: Run tests
-        run: pytest
-      - name: Run demo suite (replay)
-        run: runledger run examples/evals/demo --mode replay --baseline baselines/demo.json
-      - name: Upload artifacts
+          python -m pip install .
+          npm --prefix examples/mcp-agent ci --ignore-scripts
+      - name: Verify repeat replay and deliberate failures
+        run: python examples/mcp-agent/verify.py --repeats 10
+      - name: Verify reusable plan against the real MCP agent
+        run: runledger verify examples/mcp-agent/evals/pass --plan examples/mcp-agent/verification.yaml --output-dir examples/mcp-agent/runledger_out
+      - name: Upload example evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: runledger-artifacts
-          path: runledger_out/**
+          name: mcp-agent-evidence-${{ runner.os }}
+          path: examples/mcp-agent/runledger_out/**

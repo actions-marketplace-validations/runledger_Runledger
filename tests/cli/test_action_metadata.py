@@ -1,11 +1,40 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+EXPECTED_RELEASE = "0.3.0"
+
+
+def _usable_bash() -> str:
+    candidates = []
+    if os.name == "nt":
+        # Windows' WSL shim can exist even when no WSL distro is installed.
+        # Git for Windows supplies the same Bash used by Windows Actions jobs.
+        git_bash = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+        candidates.append(str(git_bash))
+    candidates.append(shutil.which("bash"))
+    for candidate in candidates:
+        if not candidate or not Path(candidate).is_file():
+            continue
+        try:
+            probe = subprocess.run(
+                [candidate, "-c", "printf runledger-bash-ready"],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if probe.returncode == 0 and probe.stdout == b"runledger-bash-ready":
+            return candidate
+    pytest.skip("No runnable Bash available for the composite action shell test")
 
 
 def test_action_metadata_is_marketplace_ready() -> None:
@@ -44,16 +73,16 @@ def test_readme_pins_the_released_action() -> None:
     ci = (ROOT / "docs" / "ci.md").read_text(encoding="utf-8")
     site = (ROOT / "docs" / "site-quickstart.md").read_text(encoding="utf-8")
     for text in (readme, ci, site):
-        assert "runledger/Runledger@v0.2.3" in text
-        assert re.search(r"runledger/Runledger@v0\.2(?!\.)", text) is None
+        refs = set(re.findall(r"runledger/Runledger@([A-Za-z0-9][A-Za-z0-9._-]*)", text))
+        assert refs == {f"v{EXPECTED_RELEASE}"}
 
 
 def test_release_workflow_publishes_the_tagged_version() -> None:
     import runledger
 
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "0.2.3"' in pyproject
-    assert runledger.__version__ == "0.2.3"
+    assert f'version = "{EXPECTED_RELEASE}"' in pyproject
+    assert runledger.__version__ == EXPECTED_RELEASE
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8"))
     # PyYAML 1.1 parses the unquoted workflow key "on" as boolean true.
     assert workflow[True]["push"]["tags"] == ["v*"]
@@ -76,8 +105,9 @@ def test_action_self_test_uses_local_action() -> None:
 
 
 def test_artifact_path_output_strips_glob() -> None:
+    bash = _usable_bash()
     script = r"""
-artifacts="$1"
+artifacts="${RUNLEDGER_TEST_ARTIFACT_PATH}"
 artifacts="${artifacts//$'\n'/}"
 artifacts="${artifacts//$'\r'/}"
 while true; do
@@ -100,7 +130,8 @@ printf '%s' "${artifacts}"
     }
     for raw, expected in cases.items():
         result = subprocess.run(
-            ["bash", "-c", script, "bash", raw],
+            [bash, "-c", script],
+            env=os.environ.copy() | {"RUNLEDGER_TEST_ARTIFACT_PATH": raw},
             text=True,
             capture_output=True,
             check=True,

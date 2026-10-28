@@ -9,14 +9,60 @@
 
 Website: https://runledger.io
 
-**pytest-style CI for AI agents: replay recorded tool calls, fail the PR on tool-order, schema, or tool-call-count regressions. No live model calls or API keys in CI.**
+**pytest-style CI for AI agents: replay recorded tool calls and fail the PR on tool-order, schema, or tool-call-count regressions. Recorded tools need no API keys during replay.**
+
+Replay covers requests your agent sends through RunLedger's JSONL tool protocol. Model or network calls made independently by the agent still run live. To keep a test offline, route those calls through the protocol or replace them with fixtures in your adapter. The included demo makes no live model calls.
+
+## New in 0.3.0: action scenarios and production incident replay
+
+Install or upgrade the CLI from PyPI:
+
+```sh
+python -m pip install --upgrade runledger
+runledger scenario verify --out support-results
+runledger incident --help
+```
+
+The support-agent pack runs five synthetic refund scenarios with committed effects
+tracked separately from tool responses. A timeout after a successful refund exposes
+a duplicate-payment bug; the fixed policy passes all five explicit business checks.
+Open `support-results/report.html` for the before/after results and action traces.
+
+The incident commands import your supported production JSON export or RunLedger
+JSONL log, redact it locally, and replay recorded responses against an explicit
+JSONL agent adapter. Calls are matched in order, including repeated identical
+requests. An unrecorded path stops as a divergence. Exported HTML, JSON, trace,
+and JUnit artifacts distinguish a reproduced failure from passing business rules.
+Use `--gate` to fail CI on a reproduced rule violation or inconclusive evidence.
+
+```sh
+runledger incident import production-export.json --out sanitized
+runledger incident inspect sanitized/incident.json --out inspection
+runledger incident promote sanitized/incident.json --to cases/refund-incident.json
+```
+
+[Refund demo](https://runledger.io/refund-demo) ·
+[Incident replay demo](https://runledger.io/incident-replay) ·
+[Production import guide](https://github.com/runledger/Runledger/blob/v0.3.0/docs/production-incidents.md) ·
+[Support-agent guide](https://github.com/runledger/Runledger/blob/v0.3.0/docs/support-agent-pack.md)
+
+Review redacted bundles before sharing; custom fields may need additional
+redaction paths. Recorded effects are historical evidence from the exporter,
+not simulated new provider actions. Replay freezes the JSONL tool boundary;
+independent model/network calls remain live. The public example is fictional.
+
+The wheel installs both commands. To run the included adapter examples, use the
+`v0.3.0` repository checkout or the optional [full source ZIP](https://runledger.io/templates/support-agent/runledger-scenario-source.zip);
+example files are not installed into your current folder by pip. A separate
+[portable support pack](https://runledger.io/templates/support-agent/runledger-support-agent.zip)
+runs with Python's standard library and no installation.
 
 ## Five-minute quickstart
 
 From an empty directory, with Python 3.9+:
 
 ```bash
-python3 -m pip install runledger
+python3 -m pip install "runledger==0.3.0"
 runledger init
 runledger run ./evals/demo --mode replay --baseline baselines/demo.json
 ```
@@ -40,10 +86,10 @@ A passing run prints `PASS` and writes `runledger_out/demo/<run_id>/` (`summary.
 <table>
   <tr>
     <td width="72%" valign="top">
-      <img src="docs/assets/demo.gif" alt="Terminal demo: pip install runledger, runledger init, a replay that prints PASS, then a one-line edit that fails tool order" width="100%">
+      <img src="https://raw.githubusercontent.com/runledger/Runledger/v0.3.0/docs/assets/demo.gif" alt="Terminal demo: pip install runledger, runledger init, a replay that prints PASS, then a one-line edit that fails tool order" width="100%">
     </td>
     <td width="28%" valign="top">
-      <img src="docs/pr-failing-checks.png" alt="Pull request whose RunLedger check failed" width="100%">
+      <img src="https://raw.githubusercontent.com/runledger/Runledger/v0.3.0/docs/pr-failing-checks.png" alt="Pull request whose RunLedger check failed" width="100%">
     </td>
   </tr>
 </table>
@@ -54,30 +100,47 @@ The same check as a GitHub Action. `suite.yaml` already points at `baselines/dem
 
 ```yaml
 - id: evals
-  uses: runledger/Runledger@v0.2.3
+  uses: runledger/Runledger@v0.3.0
   with:
     path: ./evals/demo
     mode: replay
+    package: runledger==0.3.0
 ```
 
-`runledger/Runledger@v0.2.3` accepts a `baseline` input and sets `result` (`pass` or `fail`), `exit-code`, and `artifacts-path`. The in-repo self-test calls the action with `uses: ./`.
+`runledger/Runledger@v0.3.0` accepts a `baseline` input and sets `result` (`pass` or `fail`), `exit-code`, and `artifacts-path`. The in-repo self-test calls the action with `uses: ./`.
 
 Page copy for runledger.io lives in `docs/site-quickstart.md`.
+
+## Verify setup and regression coverage
+
+RunLedger 0.3.0 includes `runledger doctor` for static setup checks and an optional replay probe, plus `runledger verify` for repeated passing runs, explicit regression checks, and recovery checks.
+
+The wheel installs the CLI; repository examples require a checkout of the `v0.3.0` tag. To try the self-contained Python example:
+
+```bash
+git clone --branch v0.3.0 --depth 1 https://github.com/runledger/Runledger.git runledger-examples
+cd runledger-examples
+python -m pip install "runledger==0.3.0"
+runledger doctor examples/verification --probe
+runledger verify examples/verification
+```
+
+See [setup and regression verification](https://github.com/runledger/Runledger/blob/v0.3.0/docs/setup-verification.md) for plan format, expected failure matching, runtime limits, and CI evidence. `doctor` without `--probe` does not execute your agent. Execution probes use replay, which does not isolate independent model or network calls.
 
 ## RunLedger vs DeepEval and promptfoo
 
 | | RunLedger | DeepEval | promptfoo |
 | --- | --- | --- | --- |
 | Job | Fail CI when a tool-using agent regresses | Score output quality | Evaluate prompts and model outputs |
-| How the run is produced | Replays a recorded cassette. No live model call | Calls a model to generate or grade output | Calls the provider configured for the eval |
+| How the run is produced | Runs the agent with recorded results for protocol tool calls | Calls a model to generate or grade output | Calls the provider configured for the eval |
 | The check fails when | Tool order, output schema, or the tool-call budget (`max_tool_calls`) | A score misses the threshold you set | An assertion you configured fails |
-| API keys in the replay path | Not used | Needed when the metric calls a hosted model | Needed when the provider is a hosted API |
+| API keys in the replay path | Not needed for recorded tools; independent agent calls may need them | Needed when the metric calls a hosted model | Needed when the provider is a hosted API |
 
 DeepEval scores quality. promptfoo evaluates prompts and model outputs. RunLedger is the replay harness that fails the CI check. You can use them together.
 
 ## Why this catches the regressions
 
-A change can skip a tool, call tools in a different order, return JSON that no longer matches the schema, or exceed `max_tool_calls`. Unit tests do not see the tool trace. Replay uses the recorded tool results, so the CI run does not call a live model or need API keys.
+A change can skip a tool, call tools in a different order, return JSON that no longer matches the schema, or exceed `max_tool_calls`. RunLedger checks the tool trace and returns recorded results for protocol tool calls. Deterministic CI also requires the agent's model calls and other inputs to be fixed or replayed.
 
 The process exits non-zero when tool order, the output schema, or the tool-call budget fails. `max_wall_ms` and `max_tool_errors` are separate gates. Comparing average or p95 wall time to a baseline is opt-in (`max_avg_wall_ms_delta_pct`, `max_p95_wall_ms_delta_pct`).
 
@@ -87,11 +150,13 @@ The process exits non-zero when tool order, the output schema, or the tool-call 
 - zhongyu09/openchatbi - https://github.com/zhongyu09/openchatbi/pull/8
 - joshuaalpuerto/mcp-agent - https://github.com/joshuaalpuerto/mcp-agent/pull/3
 
-Details: docs/integrations.md
+Try the [real mcp-agent integration](https://github.com/runledger/Runledger/blob/v0.3.0/docs/mcp-agent-guide.md): a pinned upstream agent, fixed model decisions, ten repeat replays, and three deliberate failures. It runs without API keys or live network calls. See the guide for its scope and upstream dependency limitations.
+
+Details: [merged integrations](https://github.com/runledger/Runledger/blob/v0.3.0/docs/integrations.md). For structured feedback after testing, use the [developer trial guide](https://github.com/runledger/Runledger/blob/v0.3.0/docs/developer-trial.md).
 
 ## Why a run failed
 
-![RunLedger failure output](docs/pr-failure-log.png)
+![RunLedger failure output](https://raw.githubusercontent.com/runledger/Runledger/v0.3.0/docs/pr-failure-log.png)
 
 Artifacts are written to `runledger_out/<suite>/<run_id>/`:
 
@@ -229,7 +294,8 @@ Each line is one tool invocation:
 **Replay matching (MVP):**
 
 * exact match on `tool` + canonicalized `args`
-* if not found: the case fails with a clear "cassette mismatch" error
+* each matching entry is consumed once per case; repeated identical requests receive their recorded results in order
+* if no unused matching entry remains: the case fails with a clear "cassette mismatch" error
 
 ---
 
@@ -312,16 +378,17 @@ jobs:
 
       - name: Run deterministic evals (replay)
         id: evals
-        uses: runledger/Runledger@v0.2.3
+        uses: runledger/Runledger@v0.3.0
         with:
           path: ./evals/demo
           mode: replay
+          package: runledger==0.3.0
 
       - name: Show the action result
         run: echo "result=${{ steps.evals.outputs.result }} exit=${{ steps.evals.outputs.exit-code }}"
 ```
 
-`runledger init` writes `.github/workflows/runledger.yml`, which installs the CLI and runs the suite with `--baseline`. The action above is the Marketplace entry in `action.yml` at `runledger/Runledger@v0.2.3`. It uploads `runledger_out/**` on success and on failure. The step sets `result`, `exit-code`, and `artifacts-path`, and you can pass `baseline:` to override `suite.yaml`. A failing run fails the job.
+`runledger init` writes `.github/workflows/runledger.yml`, which installs the CLI and runs the suite with `--baseline`. The action above is the Marketplace entry in `action.yml` at `runledger/Runledger@v0.3.0`. It uploads `runledger_out/**` on success and on failure. The step sets `result`, `exit-code`, and `artifacts-path`, and you can pass `baseline:` to override `suite.yaml`. A failing run fails the job.
 
 ---
 
@@ -350,6 +417,7 @@ jobs:
 - `docs/assertions.md` -- assertions, tool contracts, budgets
 - `docs/baselines.md` -- baselines, diffing, promotion
 - `docs/ci.md` -- CI setup with GitHub Actions
+- [Setup and regression verification](https://github.com/runledger/Runledger/blob/v0.3.0/docs/setup-verification.md) -- `doctor` and `verify` commands
 - `docs/contracts.md` -- public contracts (YAML, protocol, artifacts)
 - `docs/troubleshooting.md` -- common errors and fixes
 
